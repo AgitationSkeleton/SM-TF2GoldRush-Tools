@@ -111,6 +111,17 @@ with the `TF2Attrib_*` getters and setters but cannot be dereferenced.
 * A class set this way is pinned. It is re-applied on spawn, because bots otherwise
   re-pick their class, until the player chooses a class from the menu.
 
+**Civilian sounds.** Launch TF2's Civilian (tf_port) has no death sounds in its class
+script, so it uses the generic `Player.Death` sounds. Gold Rush uses TF2's current
+`civilian.ctx`, which plays Scout voice lines, and in practice the Civilian dies silently
+there: the class's death soundscripts are only precached for the nine regular classes. The
+plugin therefore:
+
+* replaces the Civilian's voice with generic sounds;
+* plays a generic pain sound when he is hurt;
+* plays a generic death sound, chosen the way `CTFPlayer::DeathSound` does: crit and melee
+  deaths use the death set, other deaths the pain set.
+
 **Natives** (`scripting/include/tf2.inc`):
 
 * `TF2GR_SetPlayerClass(client, TFClassType, respawn)`, including `TFClass_Civilian`
@@ -153,6 +164,7 @@ the schema's item system refuses items for a class none of them list.
 | `tf2goldrush_bot_hats` | 0 | chance that a bot gets a random hat its class may wear |
 | `tf2goldrush_fov_enable` / `_fov_min` / `_fov_max` | 1 / 75 / 130 | `!fov` limits |
 | `tf2goldrush_autoreload` | 1 | players may opt in to autoreload |
+| `tf2goldrush_civilian_generic_sounds` | 1 | Civilian pain/death sounds: 0 = class script (Scout voice lines), 1 = TF2's generic player sounds, 2 = launch TF2's generic sounds as on tf_port (needs `player/pain6-9.wav` and `death3/5/6/7.wav` on the server and FastDL) |
 
 The rules (whitelist, force stock, unlock picks, cosmetics, Civilian stats and loadout) run
 on spawn, on inventory updates, and after touching a resupply locker. Gold Rush's

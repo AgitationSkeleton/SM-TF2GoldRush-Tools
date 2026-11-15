@@ -28,7 +28,7 @@
 #pragma semicolon 1
 #pragma newdecls required
 
-#define PLUGIN_VERSION "1.2.0"
+#define PLUGIN_VERSION "1.3.0"
 #define COND_WORDS 5
 
 public Plugin myinfo =
@@ -113,6 +113,7 @@ public void OnPluginStart()
 	GoldRushStart();
 	FovStart();
 	AutoReloadStart();
+	CivSoundsStart();
 	AutoExecConfig(true, "tf2goldrush");
 	// Without this repo's gamedata SDKTools has no AcceptInput offset on Gold Rush and every
 	// script call (so every native) fails with "AcceptEntityInput not supported by this mod".
@@ -517,4 +518,5 @@ public void Event_WaitEnds(Event event, const char[] name, bool dontBroadcast)
 public void OnMapStart()
 {
 	LoadItemNames();
+	CivSoundsMapStart();
 }

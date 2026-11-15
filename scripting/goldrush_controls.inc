@@ -989,3 +989,125 @@ public any Native_GetItemName(Handle plugin, int numParams)
 	SetNativeString(2, name, GetNativeCell(3));
 	return ok;
 }
+
+/* ------------------------------------------------------------------ */
+/* Civilian pain/death sounds                                          */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Launch TF2's Civilian (tf_port) has no death sounds in its class script, so it uses the
+ * generic Player.Death set; Gold Rush's (TF2's current civilian.ctx) uses Scout voice lines.
+ * Mode 1: TF2's generic set every client has (player/pain.wav, player/death.wav).
+ * Mode 2: launch TF2's generic set (player/pain6-9.wav, melee death player/death3/5/6/7.wav),
+ *         which needs those files on the server and its FastDL (added to downloads if present).
+ */
+ConVar g_cvCivSounds;
+float g_flNextCivPain[MAXPLAYERS + 1], g_flCivVoiceAt[MAXPLAYERS + 1];
+bool g_bCivSoundEmit;
+static const char g_sGenPain1[][] = { "player/pain.wav" };
+static const char g_sGenDeath1[][] = { "player/death.wav" };
+static const char g_sGenPain2[][] = { "player/pain6.wav", "player/pain7.wav", "player/pain8.wav", "player/pain9.wav" };
+static const char g_sGenDeath2[][] = { "player/death3.wav", "player/death5.wav", "player/death6.wav", "player/death7.wav" };
+
+void CivSoundsStart()
+{
+	g_cvCivSounds = CreateConVar("tf2goldrush_civilian_generic_sounds", "1", "Civilian pain/death sounds: 0 = class script (Scout voice), 1 = TF2's generic player sounds, 2 = launch TF2's generic sounds (tf_port; needs player/pain6-9 and death3/5/6/7 on the server and FastDL).", _, true, 0.0, true, 2.0);
+	AddNormalSoundHook(Hook_CivSound);
+	HookEvent("player_hurt", Event_CivHurt);
+	HookEvent("player_death", Event_CivDeath);
+}
+
+void CivSoundsMapStart()
+{
+	for (int i = 0; i < sizeof(g_sGenPain1); i++) PrecacheSound(g_sGenPain1[i], true);
+	for (int i = 0; i < sizeof(g_sGenDeath1); i++) PrecacheSound(g_sGenDeath1[i], true);
+	char path[PLATFORM_MAX_PATH];
+	for (int i = 0; i < sizeof(g_sGenPain2); i++)
+	{
+		PrecacheSound(g_sGenPain2[i], true);
+		FormatEx(path, sizeof(path), "sound/%s", g_sGenPain2[i]);
+		if (FileExists(path))
+			AddFileToDownloadsTable(path);
+	}
+	for (int i = 0; i < sizeof(g_sGenDeath2); i++)
+	{
+		PrecacheSound(g_sGenDeath2[i], true);
+		FormatEx(path, sizeof(path), "sound/%s", g_sGenDeath2[i]);
+		if (FileExists(path))
+			AddFileToDownloadsTable(path);
+	}
+}
+
+void GenericSound(bool death, bool critOrMelee, char[] out, int maxlen)
+{
+	if (g_cvCivSounds.IntValue == 2)
+	{
+		if (death && critOrMelee)
+			strcopy(out, maxlen, g_sGenDeath2[GetRandomInt(0, sizeof(g_sGenDeath2) - 1)]);
+		else
+			strcopy(out, maxlen, g_sGenPain2[GetRandomInt(0, sizeof(g_sGenPain2) - 1)]);
+	}
+	else
+		strcopy(out, maxlen, (death && critOrMelee) ? g_sGenDeath1[0] : g_sGenPain1[0]);
+}
+
+bool IsCivilianPlayer(int entity)
+{
+	return entity >= 1 && entity <= MaxClients && IsClientInGame(entity) && GetEntProp(entity, Prop_Send, "m_iClass") == 10;
+}
+
+/** The Civilian's voice (Scout pain/death lines from the class script) becomes the generic set. */
+public Action Hook_CivSound(int clients[MAXPLAYERS], int &numClients, char sample[PLATFORM_MAX_PATH], int &entity, int &channel, float &volume, int &level, int &pitch, int &flags, char soundEntry[PLATFORM_MAX_PATH], int &seed)
+{
+	if (g_bCivSoundEmit || g_cvCivSounds.IntValue == 0 || !IsCivilianPlayer(entity))
+		return Plugin_Continue;
+	int start = 0;
+	while (sample[start] == ')' || sample[start] == '^' || sample[start] == '*' || sample[start] == '#' || sample[start] == '<' || sample[start] == '>')
+		start++;
+	if (StrContains(sample[start], "vo/", false) != 0)
+		return Plugin_Continue;
+	bool death = !IsPlayerAlive(entity);
+	bool crit = StrContains(sample, "CrticialDeath", false) != -1;
+	GenericSound(death, crit, sample, sizeof(sample));
+	g_flCivVoiceAt[entity] = GetEngineTime();
+	level = 75;     // SNDLVL_NORM, as the generic Player.Death sounds
+	return Plugin_Changed;
+}
+
+/** Hurt Civilians make a generic pain sound (the class has no pain responses of its own). */
+public void Event_CivHurt(Event event, const char[] name, bool dontBroadcast)
+{
+	int client = GetClientOfUserId(event.GetInt("userid"));
+	if (!client || g_cvCivSounds.IntValue == 0 || !IsCivilianPlayer(client) || event.GetInt("health") <= 0)
+		return;
+	float now = GetEngineTime();
+	if (now < g_flNextCivPain[client] || now - g_flCivVoiceAt[client] < 0.3)
+		return;
+	g_flNextCivPain[client] = now + 0.8;
+	char snd[PLATFORM_MAX_PATH];
+	GenericSound(false, false, snd, sizeof(snd));
+	g_bCivSoundEmit = true;
+	EmitSoundToAll(snd, client, SNDCHAN_VOICE, 75);
+	g_bCivSoundEmit = false;
+}
+
+/**
+ * The Civilian dies silently on Gold Rush (TF2's DeathSound uses the class's death sound
+ * scripts, which are only precached for the nine classes). Play the generic death sound the
+ * way CTFPlayer::DeathSound picks it: crit and melee deaths use the death set, others the pain set.
+ */
+public void Event_CivDeath(Event event, const char[] name, bool dontBroadcast)
+{
+	int client = GetClientOfUserId(event.GetInt("userid"));
+	if (!client || g_cvCivSounds.IntValue == 0 || !IsCivilianPlayer(client) || (event.GetInt("death_flags") & 32))
+		return;
+	if (GetEngineTime() - g_flCivVoiceAt[client] < 0.3)
+		return;     // a rewritten death line already played
+	int bits = event.GetInt("damagebits");
+	bool critOrMelee = (bits & (1 << 20)) != 0 || (bits & (1 << 7)) != 0 || event.GetInt("customkill") == 1;   // DMG_CRITICAL, DMG_CLUB
+	char snd[PLATFORM_MAX_PATH];
+	GenericSound(true, critOrMelee, snd, sizeof(snd));
+	g_bCivSoundEmit = true;
+	EmitSoundToAll(snd, client, SNDCHAN_VOICE, 75);
+	g_bCivSoundEmit = false;
+}
