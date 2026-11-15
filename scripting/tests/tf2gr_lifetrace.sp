@@ -6,6 +6,7 @@ public void OnPluginStart()
 	HookEvent("player_spawn", E, EventHookMode_Post);
 	HookEvent("player_death", E, EventHookMode_Pre);
 	RegServerCmd("trace_weapons", Cmd_W);
+	CreateConVar("trace_spawn_weapons", "0");
 }
 public void E(Event ev, const char[] name, bool db)
 {
@@ -13,7 +14,7 @@ public void E(Event ev, const char[] name, bool db)
 	if (!c || !IsFakeClient(c))
 		return;
 	LogMessage("%.2f %s %N cls=%d des=%d dmgbits=%d", GetGameTime(), name, c, GetEntProp(c, Prop_Send, "m_iClass"), GetEntProp(c, Prop_Send, "m_iDesiredPlayerClass"), ev.GetInt("damagebits"));
-	if (name[7] == 's')
+	if (name[7] == 's' && FindConVar("trace_spawn_weapons") != null && FindConVar("trace_spawn_weapons").BoolValue)
 		CreateTimer(1.5, T, ev.GetInt("userid"));
 }
 public Action T(Handle t, int uid)
@@ -32,8 +33,8 @@ public Action Cmd_W(int args)
 }
 void LogW(int c)
 {
-	int d[3] = { -1, -1, -1 };
-	for (int s = 0; s < 3; s++)
+	int d[6] = { -1, -1, -1, -1, -1, -1 };
+	for (int s = 0; s < 6; s++)
 	{
 		int w = GetPlayerWeaponSlot(c, s);
 		if (w > MaxClients)
@@ -44,5 +45,5 @@ void LogW(int c)
 	while ((e = FindEntityByClassname(e, "tf_wearable*")) != -1)
 		if (GetEntPropEnt(e, Prop_Send, "m_hOwnerEntity") == c)
 			Format(wear, sizeof(wear), "%s%d,", wear, GetEntProp(e, Prop_Send, "m_iItemDefinitionIndex"));
-	LogMessage("%.2f weapons %N cls=%d tauntcam=%d slots=%d/%d/%d wear=%s", GetGameTime(), c, GetEntProp(c, Prop_Send, "m_iClass"), GetEntProp(c, Prop_Send, "m_nForceTauntCam"), d[0], d[1], d[2], wear);
+	LogMessage("%.2f weapons %N cls=%d tauntcam=%d slots=%d/%d/%d/%d/%d/%d wear=%s", GetGameTime(), c, GetEntProp(c, Prop_Send, "m_iClass"), GetEntProp(c, Prop_Send, "m_nForceTauntCam"), d[0], d[1], d[2], d[3], d[4], d[5], wear);
 }

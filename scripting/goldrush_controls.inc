@@ -14,6 +14,9 @@
 #define SLOT_PRIMARY 0
 #define SLOT_SECONDARY 1
 #define SLOT_MELEE 2
+#define SLOT_PDA 3
+#define SLOT_PDA2 4          // Spy's watches (Invis Watch, Dead Ringer, Cloak and Dagger)
+#define SLOT_BUILDING 5
 #define SLOT_HEAD 10
 #define SLOT_MISC 11
 #define SLOT_OTHER -1
@@ -73,12 +76,13 @@ void GoldRushStart()
 	RegConsoleCmd("sm_civilian", Cmd_Civilian, "Play the Civilian (class 10) when tf2goldrush_civilian_enable is 1.");
 	RegConsoleCmd("sm_civ", Cmd_Civilian, "Same as !civilian.");
 	RegConsoleCmd("sm_givemeall", Cmd_GiveMeAll, "Same as !unlocks: pick any Gold Rush unlock weapon for your class (when enabled).");
+	RegAdminCmd("sm_gr_unlocklist", Cmd_UnlockList, ADMFLAG_GENERIC, "List every unlock the !unlocks menu offers, per class and slot.");
 	RegConsoleCmd("sm_unlocks", Cmd_Unlocks, "Pick any Gold Rush unlock weapon for your current class (when enabled).");
 	RegAdminCmd("sm_gr_class", Cmd_GrClass, ADMFLAG_SLAY, "sm_gr_class <target> <class|civilian> - set a player's class (civilian allowed).");
 	RegAdminCmd("sm_gr_give", Cmd_GrGive, ADMFLAG_CHEATS, "sm_gr_give <target> <item name|defindex> - give a weapon or hat.");
 	RegAdminCmd("sm_gr_strip", Cmd_GrStrip, ADMFLAG_CHEATS, "sm_gr_strip <target> <hats|weapons|all> - remove hats and/or weapons.");
 	RegAdminCmd("sm_gr_items", Cmd_GrItems, ADMFLAG_GENERIC, "sm_gr_items [filter] - list schema items (defindex, slot, stock, name).");
-	RegAdminCmd("sm_gr_setpick", Cmd_SetPick, ADMFLAG_CHEATS, "sm_gr_setpick <target> <slot 0-2> <defindex|0> - set a player's unlock pick for their class.");
+	RegAdminCmd("sm_gr_setpick", Cmd_SetPick, ADMFLAG_CHEATS, "sm_gr_setpick <target> <slot: 0 primary, 1 secondary, 2 melee, 4 watch> <defindex|0> - set a player's unlock pick for their class.");
 	RegAdminCmd("sm_gr_whitelist_reload", Cmd_WhitelistReload, ADMFLAG_CONFIG, "Reload the weapon whitelist file.");
 	HookEvent("post_inventory_application", Event_GrInventory);
 	HookEvent("player_spawn", Event_GrSpawn);
@@ -98,12 +102,38 @@ int SlotFromName(const char[] slot)
 		return SLOT_SECONDARY;
 	if (StrEqual(slot, "melee"))
 		return SLOT_MELEE;
+	if (StrEqual(slot, "pda"))
+		return SLOT_PDA;
+	if (StrEqual(slot, "pda2"))
+		return SLOT_PDA2;
+	if (StrEqual(slot, "building"))
+		return SLOT_BUILDING;
 	if (StrEqual(slot, "head"))
 		return SLOT_HEAD;
 	if (StrEqual(slot, "misc"))
 		return SLOT_MISC;
 	return SLOT_OTHER;
 }
+
+/** Weapon slot (GetPlayerWeaponSlot) of a schema slot. The Spy's revolver is a "secondary"
+ *  item in weapon slot 0, and his sapper ("building") is weapon slot 1. */
+int WeaponSlotOf(int cls, int schemaSlot)
+{
+	if (cls == 8)
+	{
+		switch (schemaSlot)
+		{
+			case SLOT_SECONDARY: return 0;
+			case SLOT_BUILDING: return 1;
+		}
+	}
+	else if (schemaSlot == SLOT_BUILDING)
+		return 5;
+	return schemaSlot;
+}
+
+/** Schema slots the unlock menu and the weapon rules cover. */
+static const int g_iPickSlots[] = { SLOT_PRIMARY, SLOT_SECONDARY, SLOT_MELEE, SLOT_PDA2 };
 
 /** Item key with prefab inheritance (prefabs may chain; the last listed prefab wins). */
 bool ItemKey(KeyValues items, KeyValues prefabs, const char[] key, char[] out, int maxlen, int depth = 0)
@@ -135,7 +165,31 @@ bool ItemKey(KeyValues items, KeyValues prefabs, const char[] key, char[] out, i
 	return false;
 }
 
-int ClassMask(KeyValues items)
+int ClassMask(KeyValues items, KeyValues prefabs, int depth = 0)
+{
+	int mask = OwnClassMask(items);
+	if (depth > 4)
+		return mask;
+	char list[128], names[4][48];
+	items.GetString("prefab", list, sizeof(list));
+	int n = ExplodeString(list, " ", names, sizeof(names), sizeof(names[]));
+	for (int i = 0; i < n; i++)
+	{
+		if (!names[i][0])
+			continue;
+		prefabs.Rewind();
+		if (prefabs.JumpToKey("prefabs") && prefabs.JumpToKey(names[i]))
+		{
+			KeyValues sub = new KeyValues("p");
+			sub.Import(prefabs);
+			mask |= ClassMask(sub, prefabs, depth + 1);
+			delete sub;
+		}
+	}
+	return mask;
+}
+
+int OwnClassMask(KeyValues items)
 {
 	int mask = 0;
 	if (items.JumpToKey("used_by_classes"))
@@ -193,7 +247,7 @@ void LoadItemNames()
 			ItemKey(kv, pre, "baseitem", buf, sizeof(buf));
 			it.isStock = StringToInt(buf) != 0;
 			ItemKey(kv, pre, "item_class", it.cls, sizeof(it.cls));
-			it.mask = ClassMask(kv);
+			it.mask = ClassMask(kv, pre);
 			int idx = g_Items.PushArray(it);
 			g_ItemIndex.SetValue(id, idx);
 			strcopy(buf, sizeof(buf), it.name);
@@ -357,6 +411,7 @@ void RemoveSlot(int client, int slot)
 	int w;
 	while ((w = GetPlayerWeaponSlot(client, slot)) > MaxClients)
 	{
+		RemoveExtraWearables(w);
 		RemovePlayerItem(client, w);
 		RemoveEntity(w);
 	}
@@ -384,6 +439,21 @@ void RemoveSlotWearables(int client, int slot)
 	int e;
 	while ((e = SlotWearable(client, slot)) != -1)
 		RemoveEntity(e);
+}
+
+/** A weapon's extra wearables (the Buff Banner's backpack, ...) are removed by the game only when
+ *  it unequips the weapon; removing the weapon entity directly would leave them on the player. */
+void RemoveExtraWearables(int weapon)
+{
+	static const char props[][] = { "m_hExtraWearable", "m_hExtraWearableViewModel" };
+	for (int i = 0; i < sizeof(props); i++)
+	{
+		if (!HasEntProp(weapon, Prop_Send, props[i]))
+			continue;
+		int e = GetEntPropEnt(weapon, Prop_Send, props[i]);
+		if (e > MaxClients && IsValidEntity(e))
+			RemoveEntity(e);
+	}
 }
 
 int StripWeapons(int client)
@@ -522,10 +592,11 @@ void ApplyWeaponRules(int client)
 	char stockName[64], name[64];
 	if (UnlocksOn(client))
 	{
-		for (int slot = 0; slot < 3; slot++)
+		for (int i = 0; i < sizeof(g_iPickSlots); i++)
 		{
+			int slot = g_iPickSlots[i], ws = WeaponSlotOf(cls, slot);
 			int def = PickFor(client, cls, slot);
-			int w = GetPlayerWeaponSlot(client, slot);
+			int w = GetPlayerWeaponSlot(client, ws);
 			ItemInfo pick;
 			if (def <= 0 || !ItemByDef(def, pick) || !(pick.mask & (1 << cls)) || pick.slot != slot || !WeaponAllowed(def))
 				continue;
@@ -533,7 +604,7 @@ void ApplyWeaponRules(int client)
 			{
 				if (SlotWearable(client, slot, def) == -1 && ItemNameOf(def, name, sizeof(name)))
 				{
-					RemoveSlot(client, slot);
+					RemoveSlot(client, ws);
 					RemoveSlotWearables(client, slot);
 					GiveItemName(client, name);
 				}
@@ -541,7 +612,7 @@ void ApplyWeaponRules(int client)
 			}
 			if ((w <= MaxClients || GetEntProp(w, Prop_Send, "m_iItemDefinitionIndex") != def) && ItemNameOf(def, name, sizeof(name)))
 			{
-				RemoveSlot(client, slot);
+				RemoveSlot(client, ws);
 				RemoveSlotWearables(client, slot);
 				// Gold Rush checks a human's item-system gives against their own inventory (earned
 				// unlocks), so build the weapon entity directly; the item system is the fallback.
@@ -558,12 +629,13 @@ void ApplyWeaponRules(int client)
 	}
 	if (!g_cvForceStock.BoolValue && !g_cvWhitelist.BoolValue)
 		return;
-	for (int slot = 0; slot < 3; slot++)
+	for (int i = 0; i < sizeof(g_iPickSlots); i++)
 	{
-		int w = GetPlayerWeaponSlot(client, slot);
+		int slot = g_iPickSlots[i], ws = WeaponSlotOf(cls, slot);
+		int w = GetPlayerWeaponSlot(client, ws);
 		if (w <= MaxClients || WeaponAllowed(GetEntProp(w, Prop_Send, "m_iItemDefinitionIndex")))
 			continue;
-		RemoveSlot(client, slot);
+		RemoveSlot(client, ws);
 		if (StockFor(cls, slot, stockName, sizeof(stockName)))
 			GiveItemName(client, stockName);
 	}
@@ -578,7 +650,7 @@ public Action Timer_CheckPick(Handle timer, DataPack dp)
 	int slot = dp.ReadCell(), def = dp.ReadCell();
 	if (!client || !IsPlayerAlive(client))
 		return Plugin_Stop;
-	int w = GetPlayerWeaponSlot(client, slot);
+	int w = GetPlayerWeaponSlot(client, WeaponSlotOf(GetEntProp(client, Prop_Send, "m_iClass"), slot));
 	int have = w > MaxClients ? GetEntProp(w, Prop_Send, "m_iItemDefinitionIndex") : -1;
 	if (have == def)
 		return Plugin_Stop;
@@ -626,10 +698,13 @@ void ShowUnlockMenu(int client)
 	}
 	Menu m = new Menu(Menu_UnlockSlot);
 	m.SetTitle("Unlocks for this class: choose a slot");
-	static const char slotNames[][] = { "Primary", "Secondary", "Melee" };
+	static const char slotNames[][] = { "Primary", "Secondary", "Melee", "PDA", "Watch" };
 	char info[8], label[96], name[64];
-	for (int slot = 0; slot < 3; slot++)
+	for (int i = 0; i < sizeof(g_iPickSlots); i++)
 	{
+		int slot = g_iPickSlots[i];
+		if (!HasUnlocks(cls, slot))
+			continue;
 		int def = PickFor(client, cls, slot);
 		if (def <= 0 || !ItemNameOf(def, name, sizeof(name)))
 			strcopy(name, sizeof(name), "your loadout");
@@ -653,6 +728,55 @@ public int Menu_UnlockSlot(Menu m, MenuAction action, int client, int item)
 	return 0;
 }
 
+public Action Cmd_UnlockList(int client, int args)
+{
+	static const char classNames[][] = { "", "scout", "sniper", "soldier", "demoman", "medic", "heavy", "pyro", "spy", "engineer" };
+	static const char slotNames[][] = { "primary", "secondary", "melee", "pda", "watch" };
+	char line[512];
+	ItemInfo it;
+	int total = 0;
+	for (int cls = 1; cls <= 9; cls++)
+	{
+		for (int i = 0; i < sizeof(g_iPickSlots); i++)
+		{
+			int slot = g_iPickSlots[i];
+			line[0] = ' ';
+			for (int j = 0; j < g_Items.Length; j++)
+			{
+				g_Items.GetArray(j, it);
+				if (UnlockListed(it, cls, slot))
+				{
+					Format(line, sizeof(line), "%s%s (%d); ", line, it.name, it.def);
+					total++;
+				}
+			}
+			if (line[0])
+				ReplyToCommand(client, "%s %s: %s", classNames[cls], slotNames[slot], line);
+		}
+	}
+	ReplyToCommand(client, "[SM] %d unlock(s) listed.", total);
+	return Plugin_Handled;
+}
+
+/** Whether the class has any unlock (non-stock item) for a schema slot. */
+bool HasUnlocks(int cls, int slot)
+{
+	ItemInfo it;
+	for (int i = 0; i < g_Items.Length; i++)
+	{
+		g_Items.GetArray(i, it);
+		if (UnlockListed(it, cls, slot))
+			return true;
+	}
+	return false;
+}
+
+bool UnlockListed(ItemInfo it, int cls, int slot)
+{
+	return !it.isStock && it.slot == slot && (it.mask & (1 << cls))
+		&& (StrContains(it.cls, "tf_weapon_") == 0 || StrContains(it.cls, "tf_wearable") == 0) && WeaponAllowed(it.def);
+}
+
 void ShowUnlockChoices(int client, int slot)
 {
 	int cls = GetEntProp(client, Prop_Send, "m_iClass");
@@ -665,7 +789,7 @@ void ShowUnlockChoices(int client, int slot)
 	for (int i = 0; i < g_Items.Length; i++)
 	{
 		g_Items.GetArray(i, it);
-		if (it.isStock || it.slot != slot || !(it.mask & (1 << cls)) || (StrContains(it.cls, "tf_weapon_") != 0 && StrContains(it.cls, "tf_wearable") != 0) || !WeaponAllowed(it.def))
+		if (!UnlockListed(it, cls, slot))
 			continue;
 		FormatEx(info, sizeof(info), "%d:%d", slot, it.def);
 		m.AddItem(info, it.name);

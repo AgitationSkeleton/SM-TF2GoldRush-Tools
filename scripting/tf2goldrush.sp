@@ -29,7 +29,7 @@
 #pragma semicolon 1
 #pragma newdecls required
 
-#define PLUGIN_VERSION "1.4.2"
+#define PLUGIN_VERSION "1.4.3"
 #define COND_WORDS 5
 
 public Plugin myinfo =

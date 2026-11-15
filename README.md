@@ -189,8 +189,11 @@ Gold Rush ties some weapons to achievements. This does **not** touch achievement
 awarding Steam achievements from a server would be achievement manipulation. Instead, with
 `tf2goldrush_givemeall 1`, every player can use every Gold Rush unlock on this server.
 
-* `!unlocks` (or `!givemeall`) opens a menu per slot for the player's current class.
-  Wearable weapons (Gunboats, Razorback, shields, boots) are included.
+* `!unlocks` (or `!givemeall`) opens a menu per slot for the player's current class: primary,
+  secondary, melee, and the Spy's watch. It offers every unlock in Gold Rush's schema
+  (prefabs resolved), 29 in Gold Rush build 2001, wearable weapons such as the Gunboats and
+  Razorback included. `sm_gr_unlocklist` prints the full list, and
+  `tools/list_weapons.py <items_game.txt>` lists it offline from the game files.
 * A pick is equipped immediately, then on every spawn or resupply. Gold Rush checks a human's
   item-system gives against the unlocks they have earned, so picked weapons are built as
   entities directly. If a pick does not stick, the server logs it and gives the slot's
@@ -228,7 +231,8 @@ The game resets the FOV on unscoping, teleporting, respawning, resupply and taun
 older plugins lose it. Here a 0.2 s check re-applies it whenever it has drifted and the
 player is not zoomed in, so the scope's own zoom is never overridden.
 
-Admin and test helpers: `sm_gr_setpick <target> <slot> <defindex|0>` (sets a pick), `sm_gr_setfov <target> <value>`, `sm_gr_whitelist_reload`.
+Admin and test helpers: `sm_gr_setpick <target> <slot> <defindex|0>` (sets a pick; slot 0
+primary, 1 secondary, 2 melee, 4 watch), `sm_gr_unlocklist`, `sm_gr_setfov <target> <value>`, `sm_gr_whitelist_reload`.
 
 ## Requirements
 
