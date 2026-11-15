@@ -33,7 +33,7 @@ enum struct ItemInfo
 }
 
 ConVar g_cvCivEnable, g_cvCivHealth, g_cvCivSpeed, g_cvCivLaunch, g_cvCivModel, g_cvCivLoadout, g_cvCivBotChance;
-ConVar g_cvHats, g_cvHeadgear, g_cvBotHats, g_cvWhitelist, g_cvWhitelistFile, g_cvForceStock, g_cvGiveMeAll;
+ConVar g_cvCosmetics, g_cvBotHats, g_cvWhitelist, g_cvWhitelistFile, g_cvForceStock, g_cvGiveMeAll;
 ArrayList g_Items;              // ItemInfo
 StringMap g_ItemIndex;          // defindex -> index into g_Items
 StringMap g_NameIndex;          // lower-case name -> index into g_Items
@@ -60,8 +60,7 @@ void GoldRushStart()
 	g_cvCivModel = CreateConVar("tf2goldrush_civilian_model", "", "Civilian player model (empty = the class script's Scout model).");
 	g_cvCivLoadout = CreateConVar("tf2goldrush_civilian_loadout", "", "Comma list of item names or defindices given to Civilians on spawn (empty = none, as in old TF2).");
 	g_cvCivBotChance = CreateConVar("tf2goldrush_civilian_bot_chance", "0", "Chance (0-1) that a bot plays the Civilian for a life (rolled on every bot spawn; needs tf2goldrush_civilian_enable).", _, true, 0.0, true, 1.0);
-	g_cvHats = CreateConVar("tf2goldrush_hats", "1", "0 = remove every player's cosmetics (head and misc items) on spawn. Wearable weapons are kept.", _, true, 0.0, true, 1.0);
-	g_cvHeadgear = CreateConVar("tf2goldrush_headgear", "1", "0 = remove every player's headgear (head-slot items) on spawn.", _, true, 0.0, true, 1.0);
+	g_cvCosmetics = CreateConVar("tf2goldrush_cosmetics", "2", "Cosmetics players keep on spawn: 2 = all, 1 = all but headgear (head-slot items), 0 = none. Wearable weapons are always kept.", _, true, 0.0, true, 2.0);
 	g_cvBotHats = CreateConVar("tf2goldrush_bot_hats", "0", "Chance that a bot gets a random hat its class may wear.", _, true, 0.0, true, 1.0);
 	g_cvWhitelist = CreateConVar("tf2goldrush_whitelist", "0", "1 = only weapons listed in the whitelist file are allowed; others are replaced by the stock weapon.", _, true, 0.0, true, 1.0);
 	g_cvWhitelistFile = CreateConVar("tf2goldrush_whitelist_file", "configs/tf2goldrush_whitelist.txt", "Weapon whitelist (path under addons/sourcemod): one item defindex or name per line; stock weapons are always allowed.");
@@ -992,9 +991,10 @@ public void Frame_GrInventory(int userid)
 	if (!client || !IsPlayerAlive(client))
 		return;
 	FovApply(client);
-	if (!g_cvHats.BoolValue)
+	int cosmetics = g_cvCosmetics.IntValue;
+	if (cosmetics == 0)
 		StripCosmetics(client, false);
-	else if (!g_cvHeadgear.BoolValue)
+	else if (cosmetics == 1)
 		StripCosmetics(client, true);
 	else if (IsFakeClient(client) && !g_bHatRolled[client])
 	{

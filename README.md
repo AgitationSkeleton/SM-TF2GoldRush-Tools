@@ -159,9 +159,8 @@ the schema's item system refuses items for a class none of them list.
 | `tf2goldrush_whitelist` / `_whitelist_file` | 0 / `configs/tf2goldrush_whitelist.txt` | only whitelisted weapons are allowed (one defindex or name per line; stock weapons always allowed); others become the slot's stock weapon |
 | `tf2goldrush_force_stock` | 0 | every weapon becomes its slot's stock weapon |
 | `tf2goldrush_givemeall` | 0 | everyone may pick unlock weapons with `!unlocks` / `!givemeall` (see below) |
-| `tf2goldrush_hats` | 1 | 0 = remove everyone's cosmetics (head and misc items) on spawn; wearable weapons such as the Gunboats are kept |
-| `tf2goldrush_headgear` | 1 | 0 = remove everyone's headgear (head-slot items) on spawn |
-| `tf2goldrush_bot_hats` | 0 | chance that a bot gets a random hat its class may wear |
+| `tf2goldrush_cosmetics` | 2 | cosmetics players keep on spawn: 2 = all, 1 = all but headgear (head-slot items), 0 = none; wearable weapons such as the Gunboats are always kept |
+| `tf2goldrush_bot_hats` | 0 | chance that a bot gets a random hat its class may wear (only with `tf2goldrush_cosmetics 2`) |
 | `tf2goldrush_fov_enable` / `_fov_min` / `_fov_max` | 1 / 75 / 130 | `!fov` limits |
 | `tf2goldrush_autoreload` | 1 | players may opt in to autoreload |
 | `tf2goldrush_civilian_generic_sounds` | 1 | Civilian pain/death sounds: 0 = class script (Scout voice lines), 1 = TF2's generic player sounds, 2 = launch TF2's generic sounds as on tf_port (needs `player/pain6-9.wav` and `death3/5/6/7.wav` on the server and FastDL) |
