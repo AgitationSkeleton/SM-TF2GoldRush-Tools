@@ -122,7 +122,7 @@ public void OnPluginStart()
 
 public Action Cmd_Status(int client, int args)
 {
-	ReplyToCommand(client, "[TF2C Tools] %s | forwards: added %d, removed %d, waiting %d/%d",
+	ReplyToCommand(client, "[TF2 Gold Rush Tools] %s | forwards: added %d, removed %d, waiting %d/%d",
 		PLUGIN_VERSION, g_fwdCondAdded.FunctionCount, g_fwdCondRemoved.FunctionCount,
 		g_fwdWaitStart.FunctionCount, g_fwdWaitEnd.FunctionCount);
 	for (int i = 0; i < COND_WORDS; i++)
@@ -481,7 +481,7 @@ public void OnGameFrame()
 				if (!(diff & (1 << b)))
 					continue;
 				if (g_cvDebug.BoolValue)
-					PrintToServer("[TF2C Tools] client %d cond %d %s", client, w * 32 + b, (bits & (1 << b)) ? "added" : "removed");
+					PrintToServer("[TF2 Gold Rush Tools] client %d cond %d %s", client, w * 32 + b, (bits & (1 << b)) ? "added" : "removed");
 				Call_StartForward((bits & (1 << b)) ? g_fwdCondAdded : g_fwdCondRemoved);
 				Call_PushCell(client);
 				Call_PushCell(w * 32 + b);
