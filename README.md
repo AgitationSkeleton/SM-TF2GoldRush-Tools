@@ -130,6 +130,7 @@ with the `TF2Attrib_*` getters and setters but cannot be dereferenced.
 | `sm_civilian` / `joinclass civilian` | everyone, when enabled | become the Civilian |
 | `sm_givemeall`, `sm_unlocks` | everyone, when enabled | unlock and pick Gold Rush's unlock weapons (server-side) |
 | `sm_fov <value>` | everyone | unrestricted FOV that persists |
+| `sm_autoreload`, `cl_autoreload <0\|1>` | everyone, when allowed | live TF2's autoreload, per player |
 
 Weapons for a Civilian are built and equipped directly (`EquipPlayerWeapon`), because
 the schema's item system refuses items for a class none of them list.
@@ -151,6 +152,7 @@ the schema's item system refuses items for a class none of them list.
 | `tf2goldrush_headgear` | 1 | 0 = remove everyone's headgear (head-slot items) on spawn |
 | `tf2goldrush_bot_hats` | 0 | chance that a bot gets a random hat its class may wear |
 | `tf2goldrush_fov_enable` / `_fov_min` / `_fov_max` | 1 / 75 / 130 | `!fov` limits |
+| `tf2goldrush_autoreload` | 1 | players may opt in to autoreload |
 
 The rules (whitelist, force stock, unlock picks, cosmetics, Civilian stats and loadout) run
 on spawn, on inventory updates, and after touching a resupply locker. Gold Rush's
@@ -166,6 +168,26 @@ unlocks every Gold Rush weapon for that player on this server.
 * Picks are saved in client cookies and equipped on every spawn or resupply.
 * The weapon whitelist and force-stock rules still apply to picks.
 * Nothing changes on the player's Steam account, and no client file is modified.
+
+### Autoreload: `!autoreload` / `cl_autoreload 1`
+
+This recreates live TF2's per-player autoreload server-side. Live TF2
+(`CTFWeaponBase::ItemPostFrame`) presses the reload key for the player when all of these hold:
+
+* the active weapon uses clips;
+* the clip is not full;
+* there is reserve ammo;
+* attack and alt-attack are not held.
+
+The plugin does the same in `OnPlayerRunCmd`. The game's own reload code therefore gives the
+same timing, and firing cancels a reload the same way, shell by shell for single-reload weapons.
+
+Players opt in with `!autoreload`, or by typing `cl_autoreload 1`: Gold Rush's client forwards
+the unknown command to the server. A client `cl_autoreload` userinfo value is honoured if the
+client sends one. The choice is saved in a cookie.
+
+`tf2goldrush_autoreload` (default 1) allows the feature; players are off until they opt in.
+`sm_gr_autoreload_stats` counts the reload presses made for players (diagnostics).
 
 ### Unrestricted FOV: `!fov <value>`
 

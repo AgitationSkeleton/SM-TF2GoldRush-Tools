@@ -31,6 +31,7 @@ public void OnClientCookiesCached(int client)
 	g_ckFov.Get(client, v, sizeof(v));
 	g_iFov[client] = StringToInt(v);
 	GrCookiesCached(client);
+	AutoReloadCookies(client);
 }
 
 void FovDisconnect(int client)

@@ -28,7 +28,7 @@
 #pragma semicolon 1
 #pragma newdecls required
 
-#define PLUGIN_VERSION "1.1.0"
+#define PLUGIN_VERSION "1.2.0"
 #define COND_WORDS 5
 
 public Plugin myinfo =
@@ -112,6 +112,7 @@ public void OnPluginStart()
 	RegAdminCmd("sm_tf2goldrush_status", Cmd_Status, ADMFLAG_ROOT, "TF2 Gold Rush Tools: show backend status.");
 	GoldRushStart();
 	FovStart();
+	AutoReloadStart();
 	AutoExecConfig(true, "tf2goldrush");
 	// Without this repo's gamedata SDKTools has no AcceptInput offset on Gold Rush and every
 	// script call (so every native) fails with "AcceptEntityInput not supported by this mod".
@@ -450,6 +451,7 @@ public any Native_IsReady(Handle plugin, int numParams)
 
 public void OnClientPutInServer(int client)
 {
+	AutoReloadConnect(client);
 	g_bTracked[client] = false;
 }
 
@@ -510,6 +512,7 @@ public void Event_WaitEnds(Event event, const char[] name, bool dontBroadcast)
 
 #include "goldrush_controls.inc"
 #include "goldrush_fov.inc"
+#include "goldrush_autoreload.inc"
 
 public void OnMapStart()
 {
