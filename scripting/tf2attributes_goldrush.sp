@@ -38,7 +38,7 @@ public Plugin myinfo =
 	author      = "AgitationSkeleton",
 	description = "TF2Attributes natives for TF2: Gold Rush, implemented with VScript and the item schema.",
 	version     = PLUGIN_VERSION,
-	url         = "https://github.com/AgitationSkeleton/SM-TF2Classified-Tools"
+	url         = "https://github.com/AgitationSkeleton/SM-TF2GoldRush-Tools"
 };
 
 StringMap g_smNameToId;      // lowercase attribute name -> defindex
