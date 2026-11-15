@@ -22,6 +22,8 @@
  */
 #include <sourcemod>
 #include <sdktools>
+#include <clientprefs>
+#include <sdkhooks>
 
 #pragma semicolon 1
 #pragma newdecls required
@@ -109,6 +111,8 @@ public void OnPluginStart()
 		g_bCondProp[i] = FindSendPropInfo("CTFPlayer", g_sCondProps[i]) > 0;
 	RegAdminCmd("sm_tf2goldrush_status", Cmd_Status, ADMFLAG_ROOT, "TF2 Gold Rush Tools: show backend status.");
 	GoldRushStart();
+	FovStart();
+	AutoExecConfig(true, "tf2goldrush");
 	// Without this repo's gamedata SDKTools has no AcceptInput offset on Gold Rush and every
 	// script call (so every native) fails with "AcceptEntityInput not supported by this mod".
 	GameData gd = new GameData("sdktools.games");
@@ -505,6 +509,7 @@ public void Event_WaitEnds(Event event, const char[] name, bool dontBroadcast)
 }
 
 #include "goldrush_controls.inc"
+#include "goldrush_fov.inc"
 
 public void OnMapStart()
 {

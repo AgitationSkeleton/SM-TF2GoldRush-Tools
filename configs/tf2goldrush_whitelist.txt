@@ -1,0 +1,4 @@
+// TF2 Gold Rush Tools weapon whitelist (tf2goldrush_whitelist 1).
+// One item defindex or schema name per line. Stock weapons are always allowed.
+// Example:
+// 36   // The Blutsauger

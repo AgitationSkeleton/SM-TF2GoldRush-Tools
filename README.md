@@ -127,22 +127,57 @@ with the `TF2Attrib_*` getters and setters but cannot be dereferenced.
 | `sm_gr_give <target> <item name\|defindex>` | cheats | give a weapon or hat |
 | `sm_gr_strip <target> <hats\|weapons\|all>` | cheats | remove hats and/or weapons |
 | `sm_gr_items [filter]` | generic | list the schema items (defindex and name) |
-| `sm_civilian` | everyone, when enabled | become the Civilian |
+| `sm_civilian` / `joinclass civilian` | everyone, when enabled | become the Civilian |
+| `sm_givemeall`, `sm_unlocks` | everyone, when enabled | unlock and pick Gold Rush's unlock weapons (server-side) |
+| `sm_fov <value>` | everyone | unrestricted FOV that persists |
 
 Weapons for a Civilian are built and equipped directly (`EquipPlayerWeapon`), because
 the schema's item system refuses items for a class none of them list.
 
-**Cvars:**
+**Cvars** (written to `cfg/sourcemod/tf2goldrush.cfg`):
 
 | Cvar | Default | Meaning |
 |---|---|---|
-| `tf2goldrush_civilian_enable` | 0 | let players use `!civilian` |
-| `tf2goldrush_civilian_health` | 0 | Civilian max health (0 = 200 from the class script; the old Civilian had less) |
-| `tf2goldrush_civilian_speed` | 0 | Civilian speed (0 = 250) |
+| `tf2goldrush_civilian_enable` | 0 | let players become the Civilian with `!civilian` or `joinclass civilian` |
+| `tf2goldrush_civilian_launch_stats` | 1 | launch TF2's Civilian stats, 50 health and 240 speed (from launch TF2's `civilian.ctx`), instead of the class script's 200 / 250 |
+| `tf2goldrush_civilian_health` / `_speed` | 0 | explicit overrides (0 = launch or class script value) |
+| `tf2goldrush_civilian_bot_chance` | 0 | chance (0-1) that a bot plays the Civilian, rolled once per connection |
 | `tf2goldrush_civilian_model` | "" | Civilian player model (empty = the Scout model) |
 | `tf2goldrush_civilian_loadout` | "" | comma list of item names or defindices given on spawn (empty = none, as in old TF2) |
-| `tf2goldrush_hats` | 1 | 0 = remove everyone's hats on spawn |
+| `tf2goldrush_whitelist` / `_whitelist_file` | 0 / `configs/tf2goldrush_whitelist.txt` | only whitelisted weapons are allowed (one defindex or name per line; stock weapons always allowed); others become the slot's stock weapon |
+| `tf2goldrush_force_stock` | 0 | every weapon becomes its slot's stock weapon |
+| `tf2goldrush_givemeall` | 0 | players may use `!givemeall` (see below) |
+| `tf2goldrush_hats` | 1 | 0 = remove everyone's cosmetics (head and misc items) on spawn; wearable weapons such as the Gunboats are kept |
+| `tf2goldrush_headgear` | 1 | 0 = remove everyone's headgear (head-slot items) on spawn |
 | `tf2goldrush_bot_hats` | 0 | chance that a bot gets a random hat its class may wear |
+| `tf2goldrush_fov_enable` / `_fov_min` / `_fov_max` | 1 / 75 / 130 | `!fov` limits |
+
+The rules (whitelist, force stock, unlock picks, cosmetics, Civilian stats and loadout) run
+on spawn, on inventory updates, and after touching a resupply locker. Gold Rush's
+`Regenerate` does not always fire the inventory event, so the plugin does not rely on it.
+
+### Unlocks: `!givemeall`
+
+Gold Rush ties some weapons to achievements. `!givemeall` does **not** touch achievements:
+awarding Steam achievements from a server would be achievement manipulation. Instead it
+unlocks every Gold Rush weapon for that player on this server.
+
+* `!unlocks` opens a menu per slot for the player's current class.
+* Picks are saved in client cookies and equipped on every spawn or resupply.
+* The weapon whitelist and force-stock rules still apply to picks.
+* Nothing changes on the player's Steam account, and no client file is modified.
+
+### Unrestricted FOV: `!fov <value>`
+
+This replaces `unrestricted_fov.smx`. `!fov <75-130>` (0 = back to `fov_desired`) sets
+`m_iDefaultFOV`/`m_iFOV`, and the value is saved in a cookie.
+
+The game resets the FOV on unscoping, teleporting, respawning, resupply and taunts, where
+older plugins lose it. Here a 0.2 s check re-applies it whenever it has drifted and the
+player is not zoomed in, so the scope's own zoom is never overridden.
+
+Admin and test helpers: `sm_gr_setpick <target> <slot> <defindex|0>` (sets a pick and
+implies `!givemeall`), `sm_gr_setfov <target> <value>`, `sm_gr_whitelist_reload`.
 
 ## Requirements
 

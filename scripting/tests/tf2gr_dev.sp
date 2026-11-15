@@ -17,6 +17,7 @@ public void OnPluginStart()
 {
 	RegAdminCmd("sm_vs", Cmd_VS, ADMFLAG_ROOT);
 	RegAdminCmd("sm_vsw", Cmd_VS, ADMFLAG_ROOT);
+	RegAdminCmd("sm_fake", Cmd_Fake, ADMFLAG_ROOT, "sm_fake <target> <command> - run a client command as the target (testing).");
 }
 
 public Action Cmd_VS(int client, int args)
@@ -41,5 +42,22 @@ public Action Cmd_VS(int client, int args)
 		if (ent > 0)
 			TF2GR_RunScript(ent, code);
 	}
+	return Plugin_Handled;
+}
+
+public Action Cmd_Fake(int client, int args)
+{
+	char pattern[64], cmd[256], name[64];
+	GetCmdArg(1, pattern, sizeof(pattern));
+	GetCmdArgString(cmd, sizeof(cmd));
+	int skip = StrContains(cmd, pattern) + strlen(pattern);
+	strcopy(cmd, sizeof(cmd), cmd[skip]);
+	TrimString(cmd);
+	StripQuotes(cmd);
+	int targets[MAXPLAYERS];
+	bool ml;
+	int n = ProcessTargetString(pattern, client, targets, sizeof(targets), 0, name, sizeof(name), ml);
+	for (int i = 0; i < n; i++)
+		FakeClientCommand(targets[i], "%s", cmd);
 	return Plugin_Handled;
 }
