@@ -71,6 +71,7 @@ void GoldRushStart()
 	g_cvWhitelistFile.AddChangeHook(Cvar_Whitelist);
 	g_ckPicks = new Cookie("tf2goldrush_picks", "Gold Rush: chosen unlock weapons (!unlocks).", CookieAccess_Private);
 	RegConsoleCmd("sm_civilian", Cmd_Civilian, "Play the Civilian (class 10) when tf2goldrush_civilian_enable is 1.");
+	RegConsoleCmd("sm_civ", Cmd_Civilian, "Same as !civilian.");
 	RegConsoleCmd("sm_givemeall", Cmd_GiveMeAll, "Same as !unlocks: pick any Gold Rush unlock weapon for your class (when enabled).");
 	RegConsoleCmd("sm_unlocks", Cmd_Unlocks, "Pick any Gold Rush unlock weapon for your current class (when enabled).");
 	RegAdminCmd("sm_gr_class", Cmd_GrClass, ADMFLAG_SLAY, "sm_gr_class <target> <class|civilian> - set a player's class (civilian allowed).");
@@ -542,7 +543,16 @@ void ApplyWeaponRules(int client)
 			{
 				RemoveSlot(client, slot);
 				RemoveSlotWearables(client, slot);
-				GiveItemName(client, name);
+				// Gold Rush checks a human's item-system gives against their own inventory (earned
+				// unlocks), so build the weapon entity directly; the item system is the fallback.
+				g_flOwnGive[client] = GetEngineTime();
+				if (!EquipWeaponEntity(client, name))
+					GiveItemName(client, name);
+				DataPack dp;
+				CreateDataTimer(0.5, Timer_CheckPick, dp, TIMER_FLAG_NO_MAPCHANGE);
+				dp.WriteCell(GetClientUserId(client));
+				dp.WriteCell(slot);
+				dp.WriteCell(def);
 			}
 		}
 	}
@@ -557,6 +567,26 @@ void ApplyWeaponRules(int client)
 		if (StockFor(cls, slot, stockName, sizeof(stockName)))
 			GiveItemName(client, stockName);
 	}
+}
+
+/** A pick that did not stick must not leave the player unarmed: log it and give the slot's
+ *  stock weapon back. */
+public Action Timer_CheckPick(Handle timer, DataPack dp)
+{
+	dp.Reset();
+	int client = GetClientOfUserId(dp.ReadCell());
+	int slot = dp.ReadCell(), def = dp.ReadCell();
+	if (!client || !IsPlayerAlive(client))
+		return Plugin_Stop;
+	int w = GetPlayerWeaponSlot(client, slot);
+	int have = w > MaxClients ? GetEntProp(w, Prop_Send, "m_iItemDefinitionIndex") : -1;
+	if (have == def)
+		return Plugin_Stop;
+	LogMessage("Unlock pick %d for %L (slot %d) did not stick; slot holds %d.", def, client, slot, have);
+	char stockName[64];
+	if (w <= MaxClients && StockFor(GetEntProp(client, Prop_Send, "m_iClass"), slot, stockName, sizeof(stockName)))
+		GiveItemName(client, stockName);
+	return Plugin_Stop;
 }
 
 public Action Cmd_GiveMeAll(int client, int args)

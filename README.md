@@ -138,7 +138,7 @@ plugin therefore:
 | `sm_gr_give <target> <item name\|defindex>` | cheats | give a weapon or hat |
 | `sm_gr_strip <target> <hats\|weapons\|all>` | cheats | remove hats and/or weapons |
 | `sm_gr_items [filter]` | generic | list the schema items (defindex and name) |
-| `sm_civilian` / `joinclass civilian` | everyone, when enabled | become the Civilian |
+| `sm_civilian`, `sm_civ` / `joinclass civilian` | everyone, when enabled | become the Civilian |
 | `sm_unlocks`, `sm_givemeall` | everyone, when enabled | pick any of Gold Rush's unlock weapons for your class (server-side) |
 | `sm_fov <value>` | everyone | unrestricted FOV that persists |
 | `sm_autoreload`, `cl_autoreload <0\|1>` | everyone, when allowed | live TF2's autoreload, per player |
@@ -191,7 +191,10 @@ awarding Steam achievements from a server would be achievement manipulation. Ins
 
 * `!unlocks` (or `!givemeall`) opens a menu per slot for the player's current class.
   Wearable weapons (Gunboats, Razorback, shields, boots) are included.
-* A pick is equipped immediately, then on every spawn or resupply. Picks are saved in
+* A pick is equipped immediately, then on every spawn or resupply. Gold Rush checks a human's
+  item-system gives against the unlocks they have earned, so picked weapons are built as
+  entities directly. If a pick does not stick, the server logs it and gives the slot's
+  stock weapon back. Picks are saved in
   client cookies. "Your own loadout" gives the slot back to the player's normal loadout.
 * The weapon whitelist and force-stock rules still apply to picks.
 * Nothing changes on the player's Steam account, and no client file is modified.
