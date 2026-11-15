@@ -13,8 +13,8 @@ This repository contains:
 | `tf2attributes_goldrush.smx` (library `tf2attributes`) | The **TF2Attributes** natives (`TF2Attrib_*`). The upstream plugin fails on Gold Rush. |
 | Gold Rush controls (in `tf2goldrush.smx`) | Hats, weapons and class 10 (the Civilian): natives, admin commands and cvars. |
 
-The plugins and the gamedata are pure SourcePawn and text: no extensions, and no
-DHooks. Everything was verified on a LAN copy of a Gold Rush server (build 2001) with
+The plugins and the gamedata are pure SourcePawn and text: no extra extensions. One hook
+(keeping bot Civilians alive, below) uses the DHooks extension bundled with SourceMod. Everything was verified on a LAN copy of a Gold Rush server (build 2001) with
 bots. The self-test passes 33 of 33 checks, and each SDKTools and SDKHooks function
 listed below was exercised.
 
@@ -139,7 +139,7 @@ plugin therefore:
 | `sm_gr_strip <target> <hats\|weapons\|all>` | cheats | remove hats and/or weapons |
 | `sm_gr_items [filter]` | generic | list the schema items (defindex and name) |
 | `sm_civilian` / `joinclass civilian` | everyone, when enabled | become the Civilian |
-| `sm_givemeall`, `sm_unlocks` | everyone, when enabled | unlock and pick Gold Rush's unlock weapons (server-side) |
+| `sm_unlocks`, `sm_givemeall` | everyone, when enabled | pick any of Gold Rush's unlock weapons for your class (server-side) |
 | `sm_fov <value>` | everyone | unrestricted FOV that persists |
 | `sm_autoreload`, `cl_autoreload <0\|1>` | everyone, when allowed | live TF2's autoreload, per player |
 
@@ -153,12 +153,12 @@ the schema's item system refuses items for a class none of them list.
 | `tf2goldrush_civilian_enable` | 0 | let players become the Civilian with `!civilian` or `joinclass civilian` |
 | `tf2goldrush_civilian_launch_stats` | 1 | launch TF2's Civilian stats, 50 health and 240 speed (from launch TF2's `civilian.ctx`), instead of the class script's 200 / 250 |
 | `tf2goldrush_civilian_health` / `_speed` | 0 | explicit overrides (0 = launch or class script value) |
-| `tf2goldrush_civilian_bot_chance` | 0 | chance (0-1) that a bot plays the Civilian, rolled once per connection |
+| `tf2goldrush_civilian_bot_chance` | 0 | chance (0-1) that a bot plays the Civilian for a life, rolled on every bot spawn |
 | `tf2goldrush_civilian_model` | "" | Civilian player model (empty = the Scout model) |
 | `tf2goldrush_civilian_loadout` | "" | comma list of item names or defindices given on spawn (empty = none, as in old TF2) |
 | `tf2goldrush_whitelist` / `_whitelist_file` | 0 / `configs/tf2goldrush_whitelist.txt` | only whitelisted weapons are allowed (one defindex or name per line; stock weapons always allowed); others become the slot's stock weapon |
 | `tf2goldrush_force_stock` | 0 | every weapon becomes its slot's stock weapon |
-| `tf2goldrush_givemeall` | 0 | players may use `!givemeall` (see below) |
+| `tf2goldrush_givemeall` | 0 | everyone may pick unlock weapons with `!unlocks` / `!givemeall` (see below) |
 | `tf2goldrush_hats` | 1 | 0 = remove everyone's cosmetics (head and misc items) on spawn; wearable weapons such as the Gunboats are kept |
 | `tf2goldrush_headgear` | 1 | 0 = remove everyone's headgear (head-slot items) on spawn |
 | `tf2goldrush_bot_hats` | 0 | chance that a bot gets a random hat its class may wear |
@@ -170,14 +170,30 @@ The rules (whitelist, force stock, unlock picks, cosmetics, Civilian stats and l
 on spawn, on inventory updates, and after touching a resupply locker. Gold Rush's
 `Regenerate` does not always fire the inventory event, so the plugin does not rely on it.
 
-### Unlocks: `!givemeall`
+### Bot Civilians
 
-Gold Rush ties some weapons to achievements. `!givemeall` does **not** touch achievements:
-awarding Steam achievements from a server would be achievement manipulation. Instead it
-unlocks every Gold Rush weapon for that player on this server.
+TFBot does not accept class 10. Pinned to it, a bot keeps switching back to a class it
+knows, and every switch outside a spawn room kills it (`CommitSuicide`), so it loops. With
+`tf2goldrush_civilian_bot_chance`, each bot spawn rolls the chance instead:
 
-* `!unlocks` opens a menu per slot for the player's current class.
-* Picks are saved in client cookies and equipped on every spawn or resupply.
+1. A bot that wins the roll is respawned as the Civilian once.
+2. Its desired class is then set back to the class it chose itself.
+3. For that life its class-switch suicide is skipped, through a DHooks hook on `CommitSuicide`.
+
+The bot stays a Civilian until it is really killed, then respawns as its own class and
+rolls again. If a team change caused the suicide, the bot is still allowed to die. An admin
+`sm_slay` does not kill a rolled Civilian bot.
+
+### Unlocks: `!unlocks` / `!givemeall`
+
+Gold Rush ties some weapons to achievements. This does **not** touch achievements:
+awarding Steam achievements from a server would be achievement manipulation. Instead, with
+`tf2goldrush_givemeall 1`, every player can use every Gold Rush unlock on this server.
+
+* `!unlocks` (or `!givemeall`) opens a menu per slot for the player's current class.
+  Wearable weapons (Gunboats, Razorback, shields, boots) are included.
+* A pick is equipped immediately, then on every spawn or resupply. Picks are saved in
+  client cookies. "Your own loadout" gives the slot back to the player's normal loadout.
 * The weapon whitelist and force-stock rules still apply to picks.
 * Nothing changes on the player's Steam account, and no client file is modified.
 
@@ -210,13 +226,12 @@ The game resets the FOV on unscoping, teleporting, respawning, resupply and taun
 older plugins lose it. Here a 0.2 s check re-applies it whenever it has drifted and the
 player is not zoomed in, so the scope's own zoom is never overridden.
 
-Admin and test helpers: `sm_gr_setpick <target> <slot> <defindex|0>` (sets a pick and
-implies `!givemeall`), `sm_gr_setfov <target> <value>`, `sm_gr_whitelist_reload`.
+Admin and test helpers: `sm_gr_setpick <target> <slot> <defindex|0>` (sets a pick), `sm_gr_setfov <target> <value>`, `sm_gr_whitelist_reload`.
 
 ## Requirements
 
 * TF2: Gold Rush dedicated server (x64, tested on build 2001)
-* SourceMod 1.12+ (tested on 1.13.0.7279), Metamod:Source 2.0
+* SourceMod 1.12+ (tested on 1.13.0.7279) with its bundled DHooks extension, Metamod:Source 2.0
 
 ## License
 

@@ -24,11 +24,12 @@
 #include <sdktools>
 #include <clientprefs>
 #include <sdkhooks>
+#include <dhooks>
 
 #pragma semicolon 1
 #pragma newdecls required
 
-#define PLUGIN_VERSION "1.3.0"
+#define PLUGIN_VERSION "1.4.0"
 #define COND_WORDS 5
 
 public Plugin myinfo =
@@ -113,6 +114,10 @@ public void OnPluginStart()
 	GoldRushStart();
 	FovStart();
 	AutoReloadStart();
+	BotCivHookStart();
+	for (int i = 1; i <= MaxClients; i++)
+		if (IsClientInGame(i))
+			BotCivHookClient(i);
 	CivSoundsStart();
 	AutoExecConfig(true, "tf2goldrush");
 	// Without this repo's gamedata SDKTools has no AcceptInput offset on Gold Rush and every
@@ -454,6 +459,7 @@ public void OnClientPutInServer(int client)
 {
 	AutoReloadConnect(client);
 	g_bTracked[client] = false;
+	BotCivHookClient(client);
 }
 
 /**

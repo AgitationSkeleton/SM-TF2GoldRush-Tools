@@ -3,8 +3,8 @@
  *
  *  - items: give/strip hats and weapons, list the schema (prefab-aware item table);
  *  - weapon rules: whitelist file and force-stock, applied on every spawn/resupply;
- *  - unlocks: !givemeall turns on a server-side unlock menu (!unlocks) whose picks are
- *    equipped on spawn. It does not touch Steam achievements: granting achievements from
+ *  - unlocks: when tf2goldrush_givemeall is on, everyone gets a server-side unlock menu
+ *    (!unlocks, alias !givemeall); a pick is equipped at once and on every spawn/resupply. It does not touch Steam achievements: granting achievements from
  *    a server would be achievement manipulation; this gives the same access to Gold Rush's
  *    unlock weapons without it;
  *  - class 10 (the Civilian): commands, joinclass civilian, bot chance, launch-TF2 stats
@@ -38,14 +38,15 @@ ArrayList g_Items;              // ItemInfo
 StringMap g_ItemIndex;          // defindex -> index into g_Items
 StringMap g_NameIndex;          // lower-case name -> index into g_Items
 StringMap g_Whitelist;          // defindex -> true
-Cookie g_ckUnlocks;             // "1" = !givemeall used
 Cookie g_ckPicks;               // "c<class>s<slot>=<def>;..."
 bool g_bCivAttrs[MAXPLAYERS + 1];
 bool g_bHatRolled[MAXPLAYERS + 1];
-bool g_bBotRolled[MAXPLAYERS + 1];
+int g_iBotCivReturn[MAXPLAYERS + 1];  // bot rolled Civilian: its own class, handed back after the Civilian respawn
+bool g_bBotCivLife[MAXPLAYERS + 1];   // this bot life is a rolled Civilian (its class-switch suicide is blocked)
+bool g_bBotCivAllowDeath[MAXPLAYERS + 1];
+int g_iBotCivTeam[MAXPLAYERS + 1];
 int g_iPinnedClass[MAXPLAYERS + 1];
 char g_sPicks[MAXPLAYERS + 1][512]; // memory copy of the picks cookie (bots have no cookies)
-bool g_bUnlocks[MAXPLAYERS + 1];
 ConVar g_cvDebugBots;
 float g_flOwnGive[MAXPLAYERS + 1];  // GenerateAndWearItem fires post_inventory_application: events
                                      // right after our own grants are ignored (loop guard)
@@ -58,27 +59,26 @@ void GoldRushStart()
 	g_cvCivSpeed = CreateConVar("tf2goldrush_civilian_speed", "0", "Civilian max speed override (0 = launch or class script value).", _, true, 0.0);
 	g_cvCivModel = CreateConVar("tf2goldrush_civilian_model", "", "Civilian player model (empty = the class script's Scout model).");
 	g_cvCivLoadout = CreateConVar("tf2goldrush_civilian_loadout", "", "Comma list of item names or defindices given to Civilians on spawn (empty = none, as in old TF2).");
-	g_cvCivBotChance = CreateConVar("tf2goldrush_civilian_bot_chance", "0", "Chance (0-1) that a bot plays the Civilian (rolled once per connection; needs tf2goldrush_civilian_enable).", _, true, 0.0, true, 1.0);
+	g_cvCivBotChance = CreateConVar("tf2goldrush_civilian_bot_chance", "0", "Chance (0-1) that a bot plays the Civilian for a life (rolled on every bot spawn; needs tf2goldrush_civilian_enable).", _, true, 0.0, true, 1.0);
 	g_cvHats = CreateConVar("tf2goldrush_hats", "1", "0 = remove every player's cosmetics (head and misc items) on spawn. Wearable weapons are kept.", _, true, 0.0, true, 1.0);
 	g_cvHeadgear = CreateConVar("tf2goldrush_headgear", "1", "0 = remove every player's headgear (head-slot items) on spawn.", _, true, 0.0, true, 1.0);
 	g_cvBotHats = CreateConVar("tf2goldrush_bot_hats", "0", "Chance that a bot gets a random hat its class may wear.", _, true, 0.0, true, 1.0);
 	g_cvWhitelist = CreateConVar("tf2goldrush_whitelist", "0", "1 = only weapons listed in the whitelist file are allowed; others are replaced by the stock weapon.", _, true, 0.0, true, 1.0);
 	g_cvWhitelistFile = CreateConVar("tf2goldrush_whitelist_file", "configs/tf2goldrush_whitelist.txt", "Weapon whitelist (path under addons/sourcemod): one item defindex or name per line; stock weapons are always allowed.");
 	g_cvForceStock = CreateConVar("tf2goldrush_force_stock", "0", "1 = every weapon is replaced by its slot's stock weapon.", _, true, 0.0, true, 1.0);
-	g_cvGiveMeAll = CreateConVar("tf2goldrush_givemeall", "0", "1 = players may use !givemeall to unlock every Gold Rush weapon for themselves (server-side, picked with !unlocks).", _, true, 0.0, true, 1.0);
+	g_cvGiveMeAll = CreateConVar("tf2goldrush_givemeall", "0", "1 = everyone may pick any Gold Rush unlock weapon with !unlocks / !givemeall (server-side; no achievements are touched).", _, true, 0.0, true, 1.0);
 	g_cvDebugBots = CreateConVar("tf2goldrush_debug_bots", "0", "Testing: let bots use unlock picks and !fov values.", FCVAR_DONTRECORD, true, 0.0, true, 1.0);
 	g_cvWhitelist.AddChangeHook(Cvar_Whitelist);
 	g_cvWhitelistFile.AddChangeHook(Cvar_Whitelist);
-	g_ckUnlocks = new Cookie("tf2goldrush_unlocks", "Gold Rush: all unlocks available (!givemeall).", CookieAccess_Private);
 	g_ckPicks = new Cookie("tf2goldrush_picks", "Gold Rush: chosen unlock weapons (!unlocks).", CookieAccess_Private);
 	RegConsoleCmd("sm_civilian", Cmd_Civilian, "Play the Civilian (class 10) when tf2goldrush_civilian_enable is 1.");
-	RegConsoleCmd("sm_givemeall", Cmd_GiveMeAll, "Unlock every Gold Rush weapon for yourself (when enabled), then pick them with !unlocks.");
-	RegConsoleCmd("sm_unlocks", Cmd_Unlocks, "Pick your unlock weapons for your current class (after !givemeall).");
+	RegConsoleCmd("sm_givemeall", Cmd_GiveMeAll, "Same as !unlocks: pick any Gold Rush unlock weapon for your class (when enabled).");
+	RegConsoleCmd("sm_unlocks", Cmd_Unlocks, "Pick any Gold Rush unlock weapon for your current class (when enabled).");
 	RegAdminCmd("sm_gr_class", Cmd_GrClass, ADMFLAG_SLAY, "sm_gr_class <target> <class|civilian> - set a player's class (civilian allowed).");
 	RegAdminCmd("sm_gr_give", Cmd_GrGive, ADMFLAG_CHEATS, "sm_gr_give <target> <item name|defindex> - give a weapon or hat.");
 	RegAdminCmd("sm_gr_strip", Cmd_GrStrip, ADMFLAG_CHEATS, "sm_gr_strip <target> <hats|weapons|all> - remove hats and/or weapons.");
 	RegAdminCmd("sm_gr_items", Cmd_GrItems, ADMFLAG_GENERIC, "sm_gr_items [filter] - list schema items (defindex, slot, stock, name).");
-	RegAdminCmd("sm_gr_setpick", Cmd_SetPick, ADMFLAG_CHEATS, "sm_gr_setpick <target> <slot 0-2> <defindex|0> - set a player's unlock pick for their class (implies !givemeall).");
+	RegAdminCmd("sm_gr_setpick", Cmd_SetPick, ADMFLAG_CHEATS, "sm_gr_setpick <target> <slot 0-2> <defindex|0> - set a player's unlock pick for their class.");
 	RegAdminCmd("sm_gr_whitelist_reload", Cmd_WhitelistReload, ADMFLAG_CONFIG, "Reload the weapon whitelist file.");
 	HookEvent("post_inventory_application", Event_GrInventory);
 	HookEvent("player_spawn", Event_GrSpawn);
@@ -362,6 +362,30 @@ void RemoveSlot(int client, int slot)
 	}
 }
 
+/** Wearable weapons (Gunboats, Razorback, shields, boots...) are not in a weapon slot: find
+ *  the player's wearable whose schema slot is <slot>; with def >= 0, only that item. */
+int SlotWearable(int client, int slot, int def = -1)
+{
+	int e = -1;
+	ItemInfo it;
+	while ((e = FindEntityByClassname(e, "tf_wearable*")) != -1)
+	{
+		if (GetEntPropEnt(e, Prop_Send, "m_hOwnerEntity") != client)
+			continue;
+		int d = GetEntProp(e, Prop_Send, "m_iItemDefinitionIndex");
+		if ((def < 0 || d == def) && ItemByDef(d, it) && it.slot == slot)
+			return e;
+	}
+	return -1;
+}
+
+void RemoveSlotWearables(int client, int slot)
+{
+	int e;
+	while ((e = SlotWearable(client, slot)) != -1)
+		RemoveEntity(e);
+}
+
 int StripWeapons(int client)
 {
 	int n = 0;
@@ -465,16 +489,11 @@ void SetPick(int client, int cls, int slot, int def)
 
 bool UnlocksOn(int client)
 {
-	if (!g_cvGiveMeAll.BoolValue || (IsFakeClient(client) && !g_cvDebugBots.BoolValue))
-		return false;
-	return g_bUnlocks[client];
+	return g_cvGiveMeAll.BoolValue && (!IsFakeClient(client) || g_cvDebugBots.BoolValue);
 }
 
 void GrCookiesCached(int client)
 {
-	char v[4];
-	g_ckUnlocks.Get(client, v, sizeof(v));
-	g_bUnlocks[client] = v[0] == '1';
 	g_ckPicks.Get(client, g_sPicks[client], sizeof(g_sPicks[]));
 }
 
@@ -488,7 +507,6 @@ public Action Cmd_SetPick(int client, int args)
 	int n = ProcessTargetString(pattern, client, targets, sizeof(targets), 0, tname, sizeof(tname), ml);
 	for (int i = 0; i < n; i++)
 	{
-		g_bUnlocks[targets[i]] = true;
 		SetPick(targets[i], GetEntProp(targets[i], Prop_Send, "m_iClass"), slot, def);
 	}
 	ReplyToCommand(client, "[SM] pick set on %d player(s)", n);
@@ -508,10 +526,23 @@ void ApplyWeaponRules(int client)
 		{
 			int def = PickFor(client, cls, slot);
 			int w = GetPlayerWeaponSlot(client, slot);
-			if (def > 0 && WeaponAllowed(def) && (w <= MaxClients || GetEntProp(w, Prop_Send, "m_iItemDefinitionIndex") != def)
-				&& ItemNameOf(def, name, sizeof(name)))
+			ItemInfo pick;
+			if (def <= 0 || !ItemByDef(def, pick) || !(pick.mask & (1 << cls)) || pick.slot != slot || !WeaponAllowed(def))
+				continue;
+			if (StrContains(pick.cls, "tf_wearable") == 0)
+			{
+				if (SlotWearable(client, slot, def) == -1 && ItemNameOf(def, name, sizeof(name)))
+				{
+					RemoveSlot(client, slot);
+					RemoveSlotWearables(client, slot);
+					GiveItemName(client, name);
+				}
+				continue;
+			}
+			if ((w <= MaxClients || GetEntProp(w, Prop_Send, "m_iItemDefinitionIndex") != def) && ItemNameOf(def, name, sizeof(name)))
 			{
 				RemoveSlot(client, slot);
+				RemoveSlotWearables(client, slot);
 				GiveItemName(client, name);
 			}
 		}
@@ -538,14 +569,7 @@ public Action Cmd_GiveMeAll(int client, int args)
 		ReplyToCommand(client, "[SM] !givemeall is not enabled on this server.");
 		return Plugin_Handled;
 	}
-	if (!AreClientCookiesCached(client))
-	{
-		ReplyToCommand(client, "[SM] Your settings are still loading, try again in a moment.");
-		return Plugin_Handled;
-	}
-	g_ckUnlocks.Set(client, "1");
-	g_bUnlocks[client] = true;
-	PrintToChat(client, "[SM] Every Gold Rush unlock is now available to you on this server. Type !unlocks to choose them for your class.");
+	PrintToChat(client, "[SM] Every Gold Rush unlock is available to you on this server. Pick them here or with !unlocks.");
 	ShowUnlockMenu(client);
 	return Plugin_Handled;
 }
@@ -556,7 +580,7 @@ public Action Cmd_Unlocks(int client, int args)
 		return Plugin_Handled;
 	if (!UnlocksOn(client))
 	{
-		ReplyToCommand(client, "[SM] Use !givemeall first%s.", g_cvGiveMeAll.BoolValue ? "" : " (not enabled on this server)");
+		ReplyToCommand(client, "[SM] Unlocks are not enabled on this server.");
 		return Plugin_Handled;
 	}
 	ShowUnlockMenu(client);
@@ -579,7 +603,7 @@ void ShowUnlockMenu(int client)
 	{
 		int def = PickFor(client, cls, slot);
 		if (def <= 0 || !ItemNameOf(def, name, sizeof(name)))
-			strcopy(name, sizeof(name), "stock");
+			strcopy(name, sizeof(name), "your loadout");
 		FormatEx(label, sizeof(label), "%s: %s", slotNames[slot], name);
 		IntToString(slot, info, sizeof(info));
 		m.AddItem(info, label);
@@ -607,12 +631,12 @@ void ShowUnlockChoices(int client, int slot)
 	m.SetTitle("Choose a weapon");
 	char info[24];
 	FormatEx(info, sizeof(info), "%d:0", slot);
-	m.AddItem(info, "Stock");
+	m.AddItem(info, "Your own loadout");
 	ItemInfo it;
 	for (int i = 0; i < g_Items.Length; i++)
 	{
 		g_Items.GetArray(i, it);
-		if (it.isStock || it.slot != slot || !(it.mask & (1 << cls)) || StrContains(it.cls, "tf_weapon_") != 0 || !WeaponAllowed(it.def))
+		if (it.isStock || it.slot != slot || !(it.mask & (1 << cls)) || (StrContains(it.cls, "tf_weapon_") != 0 && StrContains(it.cls, "tf_wearable") != 0) || !WeaponAllowed(it.def))
 			continue;
 		FormatEx(info, sizeof(info), "%d:%d", slot, it.def);
 		m.AddItem(info, it.name);
@@ -633,8 +657,15 @@ public int Menu_UnlockPick(Menu m, MenuAction action, int client, int item)
 		m.GetItem(item, info, sizeof(info));
 		ExplodeString(info, ":", parts, 2, 12);
 		int cls = GetEntProp(client, Prop_Send, "m_iClass");
-		SetPick(client, cls, StringToInt(parts[0]), StringToInt(parts[1]));
-		PrintToChat(client, "[SM] Saved. It is equipped when you next spawn or resupply.");
+		int slot = StringToInt(parts[0]), def = StringToInt(parts[1]);
+		SetPick(client, cls, slot, def);
+		if (def > 0 && IsPlayerAlive(client))
+		{
+			ApplyWeaponRules(client);
+			PrintToChat(client, "[SM] Equipped. It stays picked for this class (spawns and resupply).");
+		}
+		else
+			PrintToChat(client, "[SM] Saved. Your own loadout returns on your next spawn or resupply.");
 		ShowUnlockMenu(client);
 	}
 	return 0;
@@ -835,17 +866,87 @@ public void Event_GrSpawn(Event event, const char[] name, bool dontBroadcast)
 	// it): apply the rules a moment after every spawn as well.
 	CreateTimer(0.2, Timer_GrApply, GetClientUserId(client), TIMER_FLAG_NO_MAPCHANGE);
 	CreateTimer(1.0, Timer_GrApply, GetClientUserId(client), TIMER_FLAG_NO_MAPCHANGE);   // late loadout items
-	if (IsFakeClient(client) && !g_bBotRolled[client])
-	{
-		g_bBotRolled[client] = true;
-		if (g_cvCivEnable.BoolValue && GetURandomFloat() < g_cvCivBotChance.FloatValue)
-			g_iPinnedClass[client] = 10;
-	}
+	if (IsFakeClient(client) && g_iPinnedClass[client] == 0)
+		BotCivSpawn(client);
 	int pin = g_iPinnedClass[client];
 	if (pin > 0 && GetEntProp(client, Prop_Send, "m_iClass") != pin)
 	{
 		SetEntProp(client, Prop_Send, "m_iDesiredPlayerClass", pin);
 		RequestFrame(Frame_GrRespawn, GetClientUserId(client));
+	}
+}
+
+/** Bot Civilian chance, per life. Pinning a bot to class 10 makes TFBot fight it (it re-picks
+ *  its class, suicides, gets forced back, forever), so the bot is respawned as the Civilian
+ *  once and its desired class is then set back to the class it chose itself: the AI is
+ *  content, and its next life is that class again (and rolls again). */
+void BotCivSpawn(int client)
+{
+	int cls = GetEntProp(client, Prop_Send, "m_iClass");
+	g_bBotCivLife[client] = false;
+	if (g_iBotCivReturn[client] > 0)
+	{
+		if (cls == 10)
+		{
+			SetEntProp(client, Prop_Send, "m_iDesiredPlayerClass", g_iBotCivReturn[client]);
+			g_bBotCivLife[client] = true;
+			g_iBotCivTeam[client] = GetClientTeam(client);
+		}
+		g_iBotCivReturn[client] = 0;
+		return;
+	}
+	if (cls < 1 || cls > 9 || !g_cvCivEnable.BoolValue || GetURandomFloat() >= g_cvCivBotChance.FloatValue)
+		return;
+	g_iBotCivReturn[client] = cls;
+	SetEntProp(client, Prop_Send, "m_iDesiredPlayerClass", 10);
+	RequestFrame(Frame_GrRespawn, GetClientUserId(client));
+}
+
+/** TFBot still switches back to its own class during a Civilian life: HandleCommand_JoinClass
+ *  calls CommitSuicide, which sets health to 0 and kills directly (no TakeDamage), so it is
+ *  hooked with DHooks (vtable offset from our sdktools gamedata). For a rolled Civilian bot the
+ *  call is skipped; its desired class is already its own, so its next real death respawns it
+ *  normally. A team change also uses CommitSuicide: if the team changed, the bot is allowed to
+ *  die a frame later. */
+DynamicHook g_hCommitSuicide;
+
+void BotCivHookStart()
+{
+	GameData gd = new GameData("sdktools.games");
+	int off = gd == null ? -1 : gd.GetOffset("CommitSuicide");
+	delete gd;
+	if (off < 0)
+	{
+		LogError("CommitSuicide offset missing: bot Civilians will not stay Civilian.");
+		return;
+	}
+	g_hCommitSuicide = new DynamicHook(off, HookType_Entity, ReturnType_Void, ThisPointer_CBaseEntity);
+	g_hCommitSuicide.AddParam(HookParamType_Bool);    // bExplode
+	g_hCommitSuicide.AddParam(HookParamType_Bool);    // bForce
+}
+
+void BotCivHookClient(int client)
+{
+	if (g_hCommitSuicide != null && IsFakeClient(client))
+		g_hCommitSuicide.HookEntity(Hook_Pre, client, DH_BotCommitSuicide);
+}
+
+public MRESReturn DH_BotCommitSuicide(int client)
+{
+	if (client < 1 || client > MaxClients || !g_bBotCivLife[client] || g_bBotCivAllowDeath[client])
+		return MRES_Ignored;
+	RequestFrame(Frame_BotCivTeamCheck, GetClientUserId(client));
+	return MRES_Supercede;
+}
+
+public void Frame_BotCivTeamCheck(int userid)
+{
+	int client = GetClientOfUserId(userid);
+	if (client && IsPlayerAlive(client) && g_bBotCivLife[client] && GetClientTeam(client) != g_iBotCivTeam[client])
+	{
+		g_bBotCivAllowDeath[client] = true;
+		ForcePlayerSuicide(client);
+		g_bBotCivAllowDeath[client] = false;
 	}
 }
 
@@ -879,8 +980,8 @@ public void OnClientDisconnect(int client)
 {
 	g_iPinnedClass[client] = 0;
 	g_bCivAttrs[client] = false;
-	g_bBotRolled[client] = false;
-	g_bUnlocks[client] = false;
+	g_iBotCivReturn[client] = 0;
+	g_bBotCivLife[client] = false;
 	g_sPicks[client][0] = '\0';
 	FovDisconnect(client);
 }
